@@ -4,5 +4,17 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"sqltools.connections": [
+			{
+				"previewLimit": 50,
+				"server": "grendel.local",
+				"port": 5432,
+				"driver": "PostgreSQL",
+				"name": "Grendel",
+				"database": "mapsdb",
+				"username": "louis"
+			}
+		]
+	}
 }
