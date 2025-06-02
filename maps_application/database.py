@@ -4,6 +4,7 @@ Import this as a module to keep the main file lightweight.
 '''
 import psycopg
 import json
+import asyncio
 
 # Local
 from constants import DB_CONNECT
@@ -46,7 +47,7 @@ SQL_INSERT_MEASUREMENT = """
     """
 
 
-def db_save_current_values(safecast_data: dict) -> bool:
+async def db_save_current_values(safecast_data: dict) -> None:
     '''Take the entire dict returned from a device query to the TT database server
     and update the database classes, transports, devices and measurements.'''
     # Connect to an existing database
@@ -60,7 +61,6 @@ def db_save_current_values(safecast_data: dict) -> bool:
         if curs.fetchone()[0] == 0:
             # Not already there, insert new
             curs.execute(SQL_INSERT_DEVICE_CLASS, {"class": current_values["device_class"]})
-            conn.commit()
 
         # Check if service_transport is known
         curs.execute(SQL_SELECT_TRANSPORTS, {"service_transport": current_values["service_transport"]})
@@ -75,7 +75,6 @@ def db_save_current_values(safecast_data: dict) -> bool:
                          {"service_transport": current_values["service_transport"],
                           "service_uploaded":current_values["service_uploaded"],
                           "transport_ip_info":json.dumps(transport_ip_info)})
-            conn.commit()
 
         # Check if the device is known
         curs.execute(SQL_SELECT_DEVICES, {"device": current_values["device"]})
@@ -87,7 +86,8 @@ def db_save_current_values(safecast_data: dict) -> bool:
                           "device_class": current_values["device_class"]})
 
         # Finally (oof) insert the new measurement
-        curs.execute(SQL_INSERT_MEASUREMENT,
+        try:
+            curs.execute(SQL_INSERT_MEASUREMENT,
                      {
                          "device": current_values["device"],
                          "when_captured": current_values["when_captured"],
@@ -96,7 +96,13 @@ def db_save_current_values(safecast_data: dict) -> bool:
                          "lnd_7318u": current_values["lnd_7318u"],
                          "service_transport": current_values["service_transport"]
                      })
-    return True
+            conn.commit()  # Finally, down here, we can commit the entire transaction
+        except psycopg.IntegrityError as err:
+            print(f"Error saving new measuremen:\n  {err}")
+            conn.rollback()
+            return
+
+    return
 
 if __name__ == '__main__':
     print('Please import this as a module.')
@@ -222,5 +228,6 @@ if __name__ == '__main__':
         "zip": "L1R"
     }
 }
-    print(db_save_current_values(ttdata2))
+    
+    asyncio.run(db_save_current_values(ttdata2))
 

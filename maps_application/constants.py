@@ -20,11 +20,10 @@ DB_CONNECT = {
 # TT Server 
 # Form the URL as 'https://tt.safecast.org/device/geigiecast:62106'
 SAFECAST_API_BASE = "https://tt.safecast.org"
-SAFECAST_API_BASE_URL = SAFECAST_API_BASE + '/device/'
 
 # Initial list of devices to monitor
 INITIAL_DEVICE_URNS = [
-#    "geigiecast-zen:65004",  # Louis Zen when Nano/Cast 2106 not available
+    "geigiecast-zen:65004x",  # Louis Zen when Nano/Cast 2106 not available
     "geigiecast-zen:65049",
     "geigiecast:62106",
     "geigiecast:63209"
