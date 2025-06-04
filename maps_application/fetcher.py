@@ -28,7 +28,7 @@ async def fetch_latest_device(urn: str) -> bool:
             raise httpx.RequestError("Improper response from the database server for device_urn {urn}.")
         return await db_save_current_values(resp_data)
 
-async def main():
+async def _testmain():
     for urn in INITIAL_DEVICE_URNS:
         try:
             await fetch_latest_device(urn)
@@ -40,5 +40,5 @@ async def main():
 
 if __name__ == '__main__':
     print("Testing. Normally, you would simply import this module.")
-    asyncio.run(main())
+    asyncio.run(_testmain())
 

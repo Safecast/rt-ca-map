@@ -1,13 +1,18 @@
 '''database.py - Application database operations.
 Import this as a module to keep the main file lightweight.
 
+TODO: Check that the when_captured is not in the future by more than a few seconds.
+TODO: Check the geiger_history list in the response JSON from the server to
+      make sure that we didn't miss any. If so, back fill. The history doesn't
+      have the location therefore simply copy the previous loc_lat and loc_lon.
 '''
+
 import psycopg
 import json
 import asyncio
 
 # Local
-from constants import DB_CONNECT
+from constants import DB_HOST, DB_NAME, DB_USER, DB_PASS
 
 # Prepared SQL statements
 SQL_SELECT_DEVICE_CLASS = """
@@ -50,10 +55,14 @@ SQL_INSERT_MEASUREMENT = """
 async def db_save_current_values(safecast_data: dict) -> None:
     '''Take the entire dict returned from a device query to the TT database server
     and update the database classes, transports, devices and measurements.'''
+    # Shorthand variables, each one is a dict from the JSON response.
+    current_values:dict = safecast_data["current_values"]
+    transport_ip_info:dict = safecast_data["transport_ip_info"]
+
     # Connect to an existing database
-    current_values = safecast_data["current_values"]
-    transport_ip_info = safecast_data["transport_ip_info"]
-    with psycopg.connect(**DB_CONNECT) as conn:
+    connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
+    with psycopg.connect(connstring) as conn:
+    # with psycopg.connect(**DB_CONNECT) as conn:
         curs = conn.cursor()
 
         # Check if device_class is known
@@ -98,8 +107,8 @@ async def db_save_current_values(safecast_data: dict) -> None:
                      })
             conn.commit()  # Finally, down here, we can commit the entire transaction
         except psycopg.IntegrityError as err:
-            print(f"Error saving new measuremen:\n  {err}")
-            conn.rollback()
+            print(f"Error saving new measurement:\n  {err}")
+            conn.rollback()  # Roll back the entire transaction
             return
 
     return
