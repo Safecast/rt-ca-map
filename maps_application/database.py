@@ -8,6 +8,7 @@ TODO: Check the geiger_history list in the response JSON from the server to
 '''
 
 import psycopg
+from psycopg.rows import dict_row
 import json
 import asyncio
 
@@ -53,6 +54,39 @@ SQL_INSERT_MEASUREMENT = """
     INSERT INTO measurements (device, when_captured, loc_lat, loc_lon, lnd_7318u)
         VALUES (%(device)s, %(when_captured)s, %(loc_lat)s, %(loc_lon)s, %(lnd_7318u)s);
     """
+
+SQL_SELECT_DEVICE_MEASUREMENT = """
+    SELECT devices.urn, devices.device, device_classes.class,
+        measurements.when_captured, measurements.loc_lat,
+        measurements.loc_lon, measurements.lnd_7318u
+        FROM devices, measurements, device_classes
+        WHERE devices.device = measurements.device
+            AND device_classes.id = devices.device_class
+            AND measurements.device = %(device)s
+        ORDER BY measurements.when_captured DESC
+        LIMIT 1;
+    """
+
+async def get_device_measurement(id: int) -> dict:
+    '''Return a dict for a single device, for example
+        device_urn: str ex. geigiecast-zen:65004
+        device_id: int ex. 65004
+        device_class: str e.x. geigiecast
+        last_seen: timestampTZ ex. "2025-06-01T22:02:48Z"
+        latitude: real as a float ex. 44.10849
+        longitude: real as a float ex. 7524
+        last_reading: integer as a float ex. 29 (from "lnd_7318u")
+    '''
+    # Connect to an existing database
+    connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
+    with psycopg.connect(connstring, row_factory=dict_row) as conn:
+    # with psycopg.connect(**DB_CONNECT) as conn:
+        curs = conn.cursor()
+        curs.execute(SQL_SELECT_DEVICE_MEASUREMENT, {"device": id})
+        data = curs.fetchone()
+        # TODO: check the timestampTZ format to be compatible with expected return value
+        # See experiment in Thonny
+    return {}
 
 
 async def db_save_current_values(safecast_data: dict) -> None:

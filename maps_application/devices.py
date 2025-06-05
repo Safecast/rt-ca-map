@@ -1,10 +1,17 @@
+'''devices.py - Class Devices to represent devices in the database.
+'''
 
+import falcon
+import asyncio
+
+# Local
+import database
 
 # TODO: Finish this!
-class Device:
+class Devices:
     def __init__(self) -> None:
         pass
-    async def get_device(id: int) -> dict:
+    async def get_device(device_id: str) -> dict:
         '''Return a dict for a single device, for example
             device_urn: str ex. geigiecast-zen:65004
             device_id: int ex. 65004
@@ -14,7 +21,19 @@ class Device:
             longitude: real as a float ex. 7524
             last_reading: integer as a float ex. 29 (from "lnd_7318u")
         '''
-        pass
+        try:
+            id = int(device_id)
+        except ValueError as err:
+            raise falcon.HTTPInvalidParam('Invalid device ID, must be numeric.', device_id)
+        loop = asyncio.get_running_loop()
+        device_data = await loop.run_in_executor(None, database.get_device_measurement, id)
+        #         loop = asyncio.get_running_loop()
+        # image = await loop.run_in_executor(None, self._load_from_bytes, data)
+        if device_data:
+            return device_data
+        else:
+            print("devices:get_device(): empty device data.")
+            return None
 
 # async def get_devices():
 #     try:

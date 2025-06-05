@@ -48,6 +48,8 @@ def create_app(config=None):
     app = falcon.asgi.App()
     logger.info(f"create_app: Creating new route /map.")
     app.add_route('/map', Map())
+    get_device
+    app.add_route('/api/device/{devicenumber}}', devices.get_device({devicenumber}))
     # app.add_route('/??/{e.g.device{devicenumber}}', ??, suffix='??')
 
     return app
