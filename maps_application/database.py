@@ -42,13 +42,16 @@ SQL_SELECT_DEVICES = """
         WHERE device = %(device)s;
     """
 SQL_INSERT_DEVICES = """
-    INSERT INTO devices (device, urn, device_class)
-        VALUES (%(device)s, %(urn)s, (SELECT id FROM device_classes WHERE class = %(device_class)s));
+    INSERT INTO devices (device, urn, device_class, service_transport, last_seen)
+        VALUES (%(device)s, %(urn)s,
+            (SELECT id FROM device_classes WHERE class = %(device_class)s),
+            (SELECT id FROM transports WHERE service_transport = %(service_transport)s),
+            %(last_seen)s
+        );
     """
 SQL_INSERT_MEASUREMENT = """
-    INSERT INTO measurements (device, when_captured, loc_lat, loc_lon, lnd_7318u, transport)
-        VALUES (%(device)s, %(when_captured)s, %(loc_lat)s, %(loc_lon)s, %(lnd_7318u)s, 
-            (SELECT id FROM transports WHERE service_transport = %(service_transport)s));
+    INSERT INTO measurements (device, when_captured, loc_lat, loc_lon, lnd_7318u)
+        VALUES (%(device)s, %(when_captured)s, %(loc_lat)s, %(loc_lon)s, %(lnd_7318u)s);
     """
 
 
@@ -92,7 +95,10 @@ async def db_save_current_values(safecast_data: dict) -> None:
             curs.execute(SQL_INSERT_DEVICES, 
                          {"device": current_values["device"],
                           "urn": current_values["device_urn"],
-                          "device_class": current_values["device_class"]})
+                          "device_class": current_values["device_class"],
+                          "service_transport": current_values["service_transport"],
+                          "last_seen":current_values["when_captured"],
+                        })
 
         # Finally (oof) insert the new measurement
         try:
@@ -103,7 +109,6 @@ async def db_save_current_values(safecast_data: dict) -> None:
                          "loc_lat": current_values["loc_lat"],
                          "loc_lon": current_values["loc_lon"],
                          "lnd_7318u": current_values["lnd_7318u"],
-                         "service_transport": current_values["service_transport"]
                      })
             conn.commit()  # Finally, down here, we can commit the entire transaction
         except psycopg.IntegrityError as err:

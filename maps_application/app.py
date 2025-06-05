@@ -6,6 +6,7 @@ import json
 
 # Local imports
 # from .?? import ??
+import devices
 
 # Set up logging
 logpath = pathlib.Path.cwd() / pathlib.Path("logs")

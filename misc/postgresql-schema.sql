@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS devices (
     device INT UNIQUE,
     urn TEXT NOT NULL UNIQUE,  -- if not unique, Safecast nomenclature problem
     device_class INT REFERENCES device_classes(id),
+    service_transport INT REFERENCES transports(id),
     display boolean DEFAULT TRUE,  -- If True, display on map
     active boolean DEFAULT TRUE,  -- If True, fetch new updates from Safecast database
     PRIMARY KEY (id)
@@ -85,7 +86,6 @@ CREATE TABLE IF NOT EXISTS measurements (
     loc_lat REAL NOT NULL,
     loc_lon REAL NOT NULL,
     lnd_7318u INT NOT NULL,
-    transport INT REFERENCES transports(id),
     PRIMARY KEY (device, when_captured)  -- prevent nonsense readings
 );
 
