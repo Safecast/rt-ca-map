@@ -9,7 +9,7 @@ DB_HOST = 'grendel.local'
 DB_PORT = '5432'
 DB_NAME = 'mapsdb'
 DB_USER = 'mapsuser'
-DB_PASS = 'Pickering-Darlington-30'
+DB_PASS = ''
 DB_CONNECT = {
     "dbname":DB_NAME,
     "user":DB_USER,
