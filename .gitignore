@@ -51,3 +51,4 @@ ENV/
 # Project specific
 radiation-map/radiation_data.db
 radiation-map/safecast_data.db
+maps_application/constants.py

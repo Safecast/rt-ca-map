@@ -12,7 +12,7 @@ async function initMap() {
 
     // Load sensor data
     try {
-        const response = await fetch('/api/devices');
+        const response = await fetch('/devices');
         const data = await response.json();
         
         // Add markers for each sensor
@@ -65,7 +65,7 @@ async function initMap() {
 
 async function createSimpleGraph(sensorId, containerId) {
     try {
-        const response = await fetch(`/api/measurements/${sensorId}?days=7`);
+        const response = await fetch(`/measurements/${sensorId}?days=7`);
         const data = await response.json();
         
         if (!data.measurements || data.measurements.length === 0) {
@@ -133,7 +133,7 @@ async function createSimpleGraph(sensorId, containerId) {
 
 async function loadSensorData(sensorId) {
     try {
-        const response = await fetch(`/api/measurements/${sensorId}?days=30`);
+        const response = await fetch(`/measurements/${sensorId}?days=30`);
         const data = await response.json();
         
         // Prepare chart data
