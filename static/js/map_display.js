@@ -13,7 +13,8 @@ async function initMap() {
 
     // Load sensor data
     try {
-        const response = await fetch('/api/devices');
+        // const response = await fetch('/api/devices');  // API bypassed
+        const response = await fetch('/devices');
         const data = await response.json();
         
         // Add markers for each sensor
@@ -133,7 +134,8 @@ async function createChartGraph(sensorId, containerId) {
         `;
         
         console.log(`Fetching data for sensor ${sensorId}`);
-        const response = await fetch(`/api/measurements/${sensorId}?days=30`);
+        // const response = await fetch(`/api/measurements/${sensorId}?days=30`);
+        const response = await fetch(`/measurements/${sensorId}?days=30`);
         const data = await response.json();
         console.log(`Received data for ${sensorId}:`, data);
         
@@ -290,32 +292,32 @@ function retryFetchData(sensorId, containerId) {
         </div>
     `;
     
-    // Trigger a data refresh
-    fetch('/api/fetch-device-data')
-        .then(response => {
-            // Wait 3 seconds to allow background tasks to complete
-            setTimeout(() => {
-                // Now fetch the measurements again
-                createChartGraph(sensorId, containerId);
-            }, 3000);
-        })
-        .catch(error => {
-            console.error("Error refreshing data:", error);
-            document.getElementById(containerId).innerHTML = `
-                <div style="padding: 10px; text-align: center;">
-                    <p>Error refreshing data: ${error.message}</p>
-                    <button onclick="retryFetchData('${sensorId}', '${containerId}')" 
-                            style="margin-top: 10px; padding: 5px 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
-                        Try Again
-                    </button>
-                </div>
-            `;
-        });
+    // // Trigger a data refresh
+    // fetch('/api/fetch-device-data')
+    //     .then(response => {
+    //         // Wait 3 seconds to allow background tasks to complete
+    //         setTimeout(() => {
+    //             // Now fetch the measurements again
+    //             createChartGraph(sensorId, containerId);
+    //         }, 3000);
+    //     })
+    //     .catch(error => {
+    //         console.error("Error refreshing data:", error);
+    //         document.getElementById(containerId).innerHTML = `
+    //             <div style="padding: 10px; text-align: center;">
+    //                 <p>Error refreshing data: ${error.message}</p>
+    //                 <button onclick="retryFetchData('${sensorId}', '${containerId}')" 
+    //                         style="margin-top: 10px; padding: 5px 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+    //                     Try Again
+    //                 </button>
+    //             </div>
+    //         `;
+    //     });
 }
 
 async function loadSensorData(sensorId) {
     try {
-        const response = await fetch(`/api/measurements/${sensorId}?days=30`);
+        const response = await fetch(`/measurements/${sensorId}?days=30`);
         const data = await response.json();
         
         if (!data.measurements || data.measurements.length === 0) {

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
-#scp -p -r /home/louis/devel/GitHub/Safecast/rt-ca-map/maps_application/ \
-#  grendel.local:/usr/local/www/rt-ca-map/maps_application/
+cd /home/louis/devel/GitHub/Safecast/rt-ca-map/maps_application
+rsync -av -e ssh --exclude '__pycache__' --exclude 'deploy.sh' \
+  . grendel.local:/usr/local/www/rt-ca-map/maps_application/
 
 cd /home/louis/devel/GitHub/Safecast/rt-ca-map/maps_application/maps/templates
 rsync -av -e ssh --exclude '__pycache__' --exclude 'deploy.sh' \

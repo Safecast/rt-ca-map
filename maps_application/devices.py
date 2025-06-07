@@ -2,7 +2,10 @@
 '''
 
 import falcon
-import asyncio
+# import asyncio
+import json
+import pathlib
+import logging
 
 # Local
 import database
@@ -10,8 +13,13 @@ import database
 # TODO: Finish this!
 class Devices:
     def __init__(self) -> None:
-        pass
-    async def get_device(device_id: str) -> dict:
+        # Set up logging
+        self.logpath = pathlib.Path.cwd() / pathlib.Path("logs")
+        self.logpath.mkdir(parents=True, exist_ok=True)
+        logging.basicConfig(filename=self.logpath/"devices_app.log", level=logging.INFO)
+        self.logger = logging.getLogger(__name__)
+
+    def get_device(self, devicenumber: str) -> dict:
         '''Return a dict for a single device, for example
             device_urn: str ex. geigiecast-zen:65004
             device_id: int ex. 65004
@@ -20,20 +28,42 @@ class Devices:
             latitude: real as a float ex. 44.10849
             longitude: real as a float ex. 7524
             last_reading: integer as a float ex. 29 (from "lnd_7318u")
+            location: None  (temporarily)
         '''
         try:
-            id = int(device_id)
+            id = int(devicenumber)
+            # logger.info(f"get_device: {device_data}")
         except ValueError as err:
             raise falcon.HTTPInvalidParam('Invalid device ID, must be numeric.', device_id)
-        loop = asyncio.get_running_loop()
-        device_data = await loop.run_in_executor(None, database.get_device_measurement, id)
+        # loop = asyncio.get_running_loop()
+        # device_data = {"message": f"The device number is {id}."} 
+        device_data = database.get_device_measurement(id)
+        # loop.run_in_executor(None, database.get_device_measurement, id)
         #         loop = asyncio.get_running_loop()
         # image = await loop.run_in_executor(None, self._load_from_bytes, data)
+        # logger.info(f"get_device: {device_data}")
         if device_data:
+            # data_json = json.dumps(device_data, indent=2)
+            # yield data_json
+            device_data["location"] = None
             return device_data
         else:
             print("devices:get_device(): empty device data.")
-            return None
+            return {"message": "No device data."}
+
+    def get_devices(self):
+        devices = database.get_device_list()
+        device_data = []
+        for dev in devices:
+            device_data.append(self.get_device(dev))
+        return {"devices": device_data}
+
+    def get_device_history(self, urn, days):
+        device_data = database.get_device_measurement_history(urn, days)
+        # device_data = []
+        # for dev in devices:
+        #     device_data.append(self.get_device(dev))
+        return {"measurements": device_data}
 
 # async def get_devices():
 #     try:

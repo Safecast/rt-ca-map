@@ -13,7 +13,8 @@ async function initMap() {
 
     // Load sensor data
     try {
-        const response = await fetch('/api/devices');
+        // const response = await fetch('/api/devices');
+        const response = await fetch('/devices');
         const data = await response.json();
         
         // Add markers for each sensor

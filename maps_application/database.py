@@ -38,9 +38,18 @@ SQL_UPDATE_TRANSPORTS = """
             transport_ip_info = %(transport_ip_info)s
         WHERE service_transport = %(service_transport)s;
     """
-SQL_SELECT_DEVICES = """
+SQL_SELECT_DEVICE_COUNT = """
     SELECT COUNT(*) FROM devices
         WHERE device = %(device)s;
+    """
+SQL_SELECT_DEVICES_IDS = """
+    SELECT device FROM devices
+        WHERE display = TRUE AND active = TRUE;
+    """
+SQL_SELECT_ACTIVE_DEVICES_URNS = """
+    SELECT urn FROM devices
+        WHERE active = TRUE
+        ORDER BY urn ASC;
     """
 SQL_INSERT_DEVICES = """
     INSERT INTO devices (device, urn, device_class, service_transport, last_seen)
@@ -56,9 +65,10 @@ SQL_INSERT_MEASUREMENT = """
     """
 
 SQL_SELECT_DEVICE_MEASUREMENT = """
-    SELECT devices.urn, devices.device, device_classes.class,
-        measurements.when_captured, measurements.loc_lat,
-        measurements.loc_lon, measurements.lnd_7318u
+    SELECT devices.urn as device_urn, devices.device as device_id, device_classes.class as device_class,
+            to_char(measurements.when_captured, 'YYYY-MM-DD" "HH24:MI:SSOF') as last_seen,
+            measurements.loc_lat as latitude, measurements.loc_lon as longitude,
+            measurements.lnd_7318u as last_reading
         FROM devices, measurements, device_classes
         WHERE devices.device = measurements.device
             AND device_classes.id = devices.device_class
@@ -67,7 +77,48 @@ SQL_SELECT_DEVICE_MEASUREMENT = """
         LIMIT 1;
     """
 
-async def get_device_measurement(id: int) -> dict:
+SQL_SELECT_DEVICE_MEASUREMENT_HISTORY = """
+    SELECT devices.urn as device_urn, 
+            to_char(measurements.when_captured, 'YYYY-MM-DD" "HH24:MI:SSOF') as when_captured,
+            measurements.lnd_7318u as lnd_7318u
+        FROM devices, measurements
+        WHERE devices.device = measurements.device
+            AND devices.urn = %(device_urn)s
+        ORDER BY measurements.when_captured DESC
+    """
+
+def get_active_devices():
+    '''Return a list of device URN e.g. "geigiecast:62016".
+    '''
+    # Connect to an existing database
+    connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
+    with psycopg.connect(connstring, row_factory=dict_row) as conn:
+        curs = conn.cursor()
+        curs.execute(SQL_SELECT_ACTIVE_DEVICES_URNS)
+        data = []
+        for row in curs.fetchall():
+            data.append(row["urn"])
+    return data
+
+def get_device_measurement_history(urn: str, days: int = 1) -> list:
+    '''Return a list of dict of historical readings for a single device,
+       with each entry in the list as a dict, for example
+        when_captured: timestamp with time zone
+        lnd_7318u: integer as a float
+    '''
+    # Connect to an existing database
+    connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
+    with psycopg.connect(connstring, row_factory=dict_row) as conn:
+        curs = conn.cursor()
+        curs.execute(SQL_SELECT_DEVICE_MEASUREMENT_HISTORY, {"device_urn": urn})
+        data = []
+        for row in curs.fetchall():
+            data.append(row)
+        # TODO: check the timestampTZ format to be compatible with expected return value
+        # See experiment in Thonny
+    return data
+
+def get_device_measurement(id: int):
     '''Return a dict for a single device, for example
         device_urn: str ex. geigiecast-zen:65004
         device_id: int ex. 65004
@@ -80,14 +131,23 @@ async def get_device_measurement(id: int) -> dict:
     # Connect to an existing database
     connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
     with psycopg.connect(connstring, row_factory=dict_row) as conn:
-    # with psycopg.connect(**DB_CONNECT) as conn:
         curs = conn.cursor()
         curs.execute(SQL_SELECT_DEVICE_MEASUREMENT, {"device": id})
         data = curs.fetchone()
         # TODO: check the timestampTZ format to be compatible with expected return value
         # See experiment in Thonny
-    return {}
+        return data
 
+def get_device_list():
+    connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
+    with psycopg.connect(connstring, row_factory=dict_row) as conn:
+        curs = conn.cursor()
+        curs.execute(SQL_SELECT_DEVICES_IDS)
+        dev_list = []
+        for dev in curs.fetchall():
+            dev_list.append(int(dev["device"]))
+        return dev_list
+    
 
 async def db_save_current_values(safecast_data: dict) -> None:
     '''Take the entire dict returned from a device query to the TT database server
@@ -123,7 +183,7 @@ async def db_save_current_values(safecast_data: dict) -> None:
                           "transport_ip_info":json.dumps(transport_ip_info)})
 
         # Check if the device is known
-        curs.execute(SQL_SELECT_DEVICES, {"device": current_values["device"]})
+        curs.execute(SQL_SELECT_DEVICE_COUNT, {"device": current_values["device"]})
         if curs.fetchone()[0] == 0:
             # Not already there, insert new
             curs.execute(SQL_INSERT_DEVICES, 
