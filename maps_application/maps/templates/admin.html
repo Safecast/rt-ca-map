@@ -33,11 +33,11 @@
                         <input type="text" id="deviceUrn" required 
                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
                     </div>
-                    <div>
+                    <!-- <div>
                         <label class="block text-sm font-medium text-gray-700">Device ID</label>
                         <input type="number" id="deviceId" required 
                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
-                    </div>
+                    </div> -->
                 </div>
                 <div class="flex justify-end">
                     <button type="submit" 
@@ -201,17 +201,17 @@
             e.preventDefault();
             
             const deviceUrn = document.getElementById('deviceUrn').value;
-            const deviceId = parseInt(document.getElementById('deviceId').value);
+            // const deviceId = parseInt(document.getElementById('deviceId').value);
             
             try {
-                const response = await fetch('/api/admin/devices', {
+                const response = await fetch('/admin', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
+                        command: 'add_device',
                         device_urn: deviceUrn,
-                        device_id: deviceId,
                         device_class: 'GeigerCounter',
                         dev_test: false
                     })
@@ -236,8 +236,16 @@
             }
             
             try {
-                const response = await fetch(`/api/admin/devices/${encodeURIComponent(deviceUrn)}`, {
-                    method: 'DELETE'
+                // const response = await fetch(`/api/admin/devices/${encodeURIComponent(deviceUrn)}`, {
+                const response = await fetch(`/admin`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        command: 'delete_device',
+                        device_urn: deviceUrn
+                    })
                 });
                 
                 if (!response.ok) {
@@ -259,8 +267,16 @@
             }
             
             try {
-                const response = await fetch(`/api/admin/devices/restore/${encodeURIComponent(deviceUrn)}`, {
-                    method: 'POST'
+                // const response = await fetch(`/api/admin/devices/restore/${encodeURIComponent(deviceUrn)}`, {
+                const response = await fetch(`/admin`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        command: 'restore_device',
+                        device_urn: deviceUrn
+                    })
                 });
                 
                 if (!response.ok) {

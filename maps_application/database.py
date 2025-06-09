@@ -51,6 +51,15 @@ SQL_SELECT_ACTIVE_DEVICES_URNS = """
         WHERE active = TRUE
         ORDER BY urn ASC;
     """
+SQL_SELECT_MANAGED_DEVICES = """
+    SELECT devices.urn as device_urn, devices.device as "device_id",
+		device_classes.class as device_class, devices.last_seen as last_seen,
+        devices.active
+    FROM devices, device_classes
+    WHERE
+		devices.device_class = device_classes.id
+	ORDER BY devices.device ASC;
+    """
 SQL_INSERT_DEVICES = """
     INSERT INTO devices (device, urn, device_class, service_transport, last_seen)
         VALUES (%(device)s, %(urn)s,
@@ -87,10 +96,29 @@ SQL_SELECT_DEVICE_MEASUREMENT_HISTORY = """
         ORDER BY measurements.when_captured DESC
     """
 
+SQL_ACTIVATE_DEVICE = """
+    UPDATE devices
+        SET active = %(status)s
+        WHERE devices.urn = %(device_urn)s 
+    """
+
+def get_managed_devices():
+    '''Return list of device dicts, each dict:
+        'device_urn',
+        'device_id',
+        'device_class',
+        'last_seen',
+        'active'
+    '''
+    connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
+    with psycopg.connect(connstring, row_factory=dict_row) as conn:
+        curs = conn.cursor()
+        curs.execute(SQL_SELECT_MANAGED_DEVICES)
+        return curs.fetchall()
+
 def get_active_devices():
     '''Return a list of device URN e.g. "geigiecast:62016".
     '''
-    # Connect to an existing database
     connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
     with psycopg.connect(connstring, row_factory=dict_row) as conn:
         curs = conn.cursor()
@@ -103,10 +131,9 @@ def get_active_devices():
 def get_device_measurement_history(urn: str, days: int = 1) -> list:
     '''Return a list of dict of historical readings for a single device,
        with each entry in the list as a dict, for example
-        when_captured: timestamp with time zone
-        lnd_7318u: integer as a float
+            when_captured: timestamp with time zone
+            lnd_7318u: integer as a float
     '''
-    # Connect to an existing database
     connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
     with psycopg.connect(connstring, row_factory=dict_row) as conn:
         curs = conn.cursor()
@@ -114,7 +141,7 @@ def get_device_measurement_history(urn: str, days: int = 1) -> list:
         data = []
         for row in curs.fetchall():
             data.append(row)
-        # TODO: check the timestampTZ format to be compatible with expected return value
+        # The timestampTZ format is compatible with expected return value
         # See experiment in Thonny
     return data
 
@@ -147,7 +174,13 @@ def get_device_list():
         for dev in curs.fetchall():
             dev_list.append(int(dev["device"]))
         return dev_list
-    
+
+def activate_device(device_urn: str, activate: bool = True) -> int:
+    connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
+    with psycopg.connect(connstring) as conn:
+        curs = conn.cursor()
+        curs.execute(SQL_ACTIVATE_DEVICE, {"status": str(activate).upper(), "device_urn": device_urn})
+        return curs.rowcount
 
 async def db_save_current_values(safecast_data: dict) -> None:
     '''Take the entire dict returned from a device query to the TT database server

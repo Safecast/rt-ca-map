@@ -10,35 +10,6 @@ import devices
 import fetcher
 
 
-# # TODO: Finish this!
-# class Devices:
-#     def __init__(self) -> None:
-#         pass
-#     async def get_device(self, devicenumber: str) -> dict:
-#         '''Return a dict for a single device, for example
-#             device_urn: str ex. geigiecast-zen:65004
-#             device_id: int ex. 65004
-#             device_class: str e.x. geigiecast
-#             last_seen: timestampTZ ex. "2025-06-01T22:02:48Z"
-#             latitude: real as a float ex. 44.10849
-#             longitude: real as a float ex. 7524
-#             last_reading: integer as a float ex. 29 (from "lnd_7318u")
-#         '''
-#         try:
-#             id = int(devicenumber)
-#         except ValueError as err:
-#             raise falcon.HTTPInvalidParam('Invalid device ID, must be numeric.', device_id)
-#         loop = asyncio.get_running_loop()
-#         device_data = await loop.run_in_executor(None, database.get_device_measurement, id)
-#         #         loop = asyncio.get_running_loop()
-#         # image = await loop.run_in_executor(None, self._load_from_bytes, data)
-#         if device_data:
-#             return device_data
-#         else:
-#             print("devices:get_device(): empty device data.")
-#             return None
-
-
 # Set up logging
 logpath = pathlib.Path.cwd() / pathlib.Path("logs")
 logpath.mkdir(parents=True, exist_ok=True)
@@ -70,20 +41,20 @@ class Map:
         logger.info(f"Map.on_get: template = {resptext}.")
         resp.text = resptext
 
-
-class Devices:
-    '''Respond to API requests.'''
-    def __init__(self) -> None:
-        pass
-    async def on_get(self, req, resp):
-        '''Return the list of devices with their latest readings.'''
-        logger.info(f"API.on_get: Entry, req = {req}, uri = {req.uri}")
-        logger.info(f"API.on_get: Calling get_devices.")
-        text = devices.Devices().get_devices()
-        # text = {"message": "Hello API."}
-        logger.info(text)
-        resp.media = text
-        resp.status = falcon.HTTP_200
+# # Moved to module devices
+# class Devices:
+    # '''Respond to API requests.'''
+    # def __init__(self) -> None:
+    #     pass
+    # async def on_get(self, req, resp):
+    #     '''Return the list of devices with their latest readings.'''
+    #     logger.info(f"API.on_get: Entry, req = {req}, uri = {req.uri}")
+    #     logger.info(f"API.on_get: Calling get_devices_list.")
+    #     text = devices.Devices().get_devices_list()
+    #     # text = {"message": "Hello API."}
+    #     logger.info(text)
+    #     resp.media = text
+    #     resp.status = falcon.HTTP_200
 
 class Measurements:
     '''Respond to request for measurements.'''
@@ -102,53 +73,99 @@ class Measurements:
         logger.info(f"  scope = {req.scope}")
         logger.info(f"  params = {req.params}")
         assert req.scope["type"] == "http"
-        # logger.info(f"Measurements.on_get: Calling get_devices.")
-        # text = devices.Devices().get_devices()
         days = req.params["days"]
-        # days = querystring.split("=")[1]
-        # text = {"message": f"Hello measurements, devicenumber={device_urn} days={days}."}
         text = devices.Devices().get_device_history(device_urn, days)
         logger.info(text)
         resp.media = text
         resp.status = falcon.HTTP_200
 
 
-    # async def on_get(self, req, resp, devicenumber):
-    #     '''Return the dict for a single device's latest reading.'''
-    #     logger.info(f"API.on_get: Entry with req = {req} and devicenumber {devicenumber}.")
-    #     # resp.content_type = falcon.MEDIA_HTML
-    #     # data = devices.Devices.get_device(devicenumber)
-    #     text = devices.Devices().get_device(devicenumber)
-    #     # text = {"message": "Hello API."}
-    #     logger.info(text)
-    #     resp.media = text
-    #     resp.status = falcon.HTTP_200
+class Admin:
+    '''Respond to administrative requests.'''
+    def __init__(self, devices) -> None:
+        self._devices = devices  # Keep working with same instance of the class
+        pass
+
+    async def on_get(self, req, resp):
+        '''Display the admin page with existing settings.'''
+        logger.info(f"Admin.on_get: Entry, req = {req}, uri = {req.uri}.")
+        device_data, deleted_devices = self._devices.get_devices_managed()
+        resp.status = falcon.HTTP_200
+        resp.content_type = falcon.MEDIA_HTML
+        template = templates_env.get_template("admin.html")
+        resptext = template.render({
+                    "request": req, 
+                    "devices": device_data,
+                    "deleted_devices": deleted_devices
+                }
+            )
+        logger.info(f"Map.on_get: returning template admin.html.")
+        resp.text = resptext
+
+    async def on_post(self, req, resp):
+        logger.info(f"Admin.on_post: Entry, req = {req}, uri = {req.uri}.")
+        data = await req.stream.read()
+        params = data.decode('utf-8')
+        # logger.info(f"  req.stream decoded = {params}")
+        posted = json.loads(params)
+        logstring = f"posted = {type(posted)}\n"
+        for k in posted:
+            logstring += "  " + k + ": " + str(posted[k]) + "\n"
+        # logger.info(f"  posted dict = {posted}")
+        logger.info(f"  posted dict contents = {logstring}")
+        # resp.status = falcon.HTTP_200
+        # resp.text = {"message": f"Scope printed."}
+
+        if posted["command"] == "add_device":
+            device_urn = posted['device_urn']
+            succcess = await self._devices.add_device(device_urn)
+            if succcess:
+                resp.status = falcon.HTTP_200
+                resp.text = {"message": f"Device {posted['device_urn']} added (Debug, not really)."}
+            else:
+                resp.status = falcon.HTTP_BAD_REQUEST
+                resp.text = {"message": f"Device {posted['device_urn']} not in database (Debug, not really)."}
+
+        elif posted["command"] == "delete_device":
+            succcess = self._devices.activate_device(posted['device_urn'], active=False)
+            if succcess:
+                resp.status = falcon.HTTP_200
+                resp.text = {"message": f"Device {posted['device_urn']} deactivated."}
+            else:
+                resp.status = falcon.HTTP_BAD_REQUEST
+                resp.text = {"message": f"Device {posted['device_urn']} not in database."}
+
+        else:
+            resp.status = falcon.HTTP_200
+            resp.text = {"message": f"Command {posted['command']} not recognized."}
+
 
 def create_app(config=None):
     # config = config or Config()
     logger.info(f"create_app: Creating new falcon.asgi.App.")
 
     measurements = Measurements()
-    devices = Devices()
     maps = Map()
+    devs = devices.Devices()
+    admin = Admin(devs)
     app = falcon.asgi.App()
     # Map
     logger.info("create_app: Creating new route /map.")
     app.add_route('/map', maps)
     # List of devices
     logger.info("create_app: Creating new route /devices.")
-    app.add_route('/devices', devices)
+    app.add_route('/devices', devs)
     # List of measurements
-    logger.info(r"create_app: Creating new route /measurements/{devicenumber}.")
+    logger.info("create_app: Creating new route /measurements/{device_urn}.")
     app.add_route('/measurements/{device_urn}', measurements)
+    # Administration page
+    logger.info("create_app: Creating new route /admin.")
+    app.add_route('/admin', admin)
 
     # Starting background fetcher task
     coroutine = fetcher.fetch_all_latest
-    # create and schedule the periodic task
-    task = asyncio.create_task(fetcher.periodic(180.0, coroutine))
+    # create and schedule the periodic task (4 minutes)
+    task = asyncio.create_task(fetcher.periodic(240.0, coroutine))
 
-    # while True:
-    #     await fetcher.fetch_all_latest())
-    #     asyncio.sleep(60)
     return app
 

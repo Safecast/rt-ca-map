@@ -2,22 +2,55 @@
 '''
 
 import falcon
-# import asyncio
+import asyncio
 import json
 import pathlib
 import logging
+import httpx
 
 # Local
 import database
+import fetcher
 
-# TODO: Finish this!
+
 class Devices:
+    '''Manage devices and respond to API requests.'''
     def __init__(self) -> None:
         # Set up logging
         self.logpath = pathlib.Path.cwd() / pathlib.Path("logs")
         self.logpath.mkdir(parents=True, exist_ok=True)
         logging.basicConfig(filename=self.logpath/"devices_app.log", level=logging.INFO)
         self.logger = logging.getLogger(__name__)
+        # Managed devices
+        self._devices_managed = database.get_managed_devices()
+
+    async def on_get(self, req, resp):
+        '''Return the list of devices with their latest readings.'''
+        self.logger.info(f"API.on_get: Entry, req = {req}, uri = {req.uri}")
+        self. logger.info(f"API.on_get: Calling get_devices_list.")
+        text = self.get_devices_list()
+        # text = {"message": "Hello API."}
+        self.logger.info(text)
+        resp.media = text
+        resp.status = falcon.HTTP_200
+
+    async def add_device(self, device_urn: str) -> bool:
+        '''If device not already known in the database, wait for fetcher to do its job.'''
+        devices = database.get_managed_devices()
+        for dev in devices:
+            # If already there, return True
+            if dev["device_urn"] == device_urn:
+                raise Exception("Add device already there.")
+                # return True
+        await fetcher.fetch_latest_device(device_urn)
+        return True
+
+    def activate_device(self, device_urn: str, active: bool = True) -> int:
+        '''Set the device.active flag to False.
+        Normally return True.
+        Return False if the device URN is not known locally.'''
+        return database.activate_device(device_urn, active)
+
 
     def get_device(self, devicenumber: str) -> dict:
         '''Return a dict for a single device, for example
@@ -51,7 +84,7 @@ class Devices:
             print("devices:get_device(): empty device data.")
             return {"message": "No device data."}
 
-    def get_devices(self):
+    def get_devices_list(self):
         devices = database.get_device_list()
         device_data = []
         for dev in devices:
@@ -65,87 +98,14 @@ class Devices:
         #     device_data.append(self.get_device(dev))
         return {"measurements": device_data}
 
-# async def get_devices():
-#     try:
-#         with get_db() as conn:
-#             try:
-#                 # First, check if transport_info table exists
-#                 table_exists = False
-#                 try:
-#                     check_table = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='transport_info'").fetchone()
-#                     table_exists = check_table is not None
-#                 except Exception as table_error:
-#                     logger.warning(f"Error checking if transport_info table exists: {table_error}")
-#                     table_exists = False
-                
-#                 # First, get all devices
-#                 devices_query = """
-#                     SELECT device_urn, device_id, device_class, last_seen, latitude, longitude, last_reading
-#                     FROM devices
-#                 """
-                
-#                 devices_result = conn.execute(devices_query).fetchall()
-                
-#                 if not devices_result:
-#                     return {"devices": []}
-                
-#                 devices = []
-#                 for device_row in devices_result:
-#                     try:
-#                         device_urn = device_row[0]
-#                         device_id = device_row[1]
-#                         device_class = device_row[2]
-#                         last_seen = device_row[3]
-#                         latitude = device_row[4]
-#                         longitude = device_row[5]
-#                         last_reading = device_row[6]
-                        
-#                         # Get transport info if the table exists
-#                         transport_result = None
-#                         if table_exists:
-#                             try:
-#                                 transport_query = """
-#                                     SELECT city, country 
-#                                     FROM transport_info 
-#                                     WHERE device_urn = ?
-#                                     LIMIT 1
-#                                 """
-#                                 transport_result = conn.execute(transport_query, (device_urn,)).fetchone()
-#                             except Exception as transport_error:
-#                                 logger.warning(f"Error fetching transport info for device {device_urn}: {transport_error}")
-                        
-#                         # Build device data
-#                         device_data = {
-#                             "device_urn": device_urn,
-#                             "device_id": device_id,
-#                             "device_class": device_class,
-#                             "latitude": float(latitude) if latitude is not None else None,
-#                             "longitude": float(longitude) if longitude is not None else None,
-#                             "last_seen": last_seen.isoformat() if hasattr(last_seen, 'isoformat') else str(last_seen) if last_seen else None,
-#                             "last_reading": float(last_reading) if last_reading is not None else None,
-#                             "location": None
-#                         }
-                        
-#                         # Add location string if transport info is available
-#                         if transport_result and transport_result[0] and transport_result[1]:
-#                             device_data["location"] = f"{transport_result[0]}, {transport_result[1]}"
-                        
-#                         devices.append(device_data)
-#                     except Exception as device_error:
-#                         logger.error(f"Error processing device row {device_row}: {device_error}")
-#                         continue
-                
-#                 return {"devices": devices}
-                
-#             except Exception as query_error:
-#                 logger.error(f"Database query error in get_devices: {query_error}")
-#                 logger.error(traceback.format_exc())
-#                 raise HTTPException(status_code=500, detail=f"Database query error: {str(query_error)}")
-                
-#     except HTTPException:
-#         raise  # Re-raise HTTP exceptions
-#     # except Exception as e:
-#     #     error_msg = f"Unexpected error in get_devices: {str(e)}"
-#     #     logger.error(error_msg)
-#     #     logger.error(traceback.format_exc())
-#     #     raise HTTPException(status_code=500, detail=error_msg)
+    def get_devices_managed(self):
+        device_data = database.get_managed_devices()
+        active_devs = []
+        inactive_devs = []
+        for dev in device_data:
+            if dev["active"]:
+                active_devs.append(dev)
+            else:
+                inactive_devs.append(dev)
+        return active_devs, inactive_devs
+
