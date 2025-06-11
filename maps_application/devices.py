@@ -67,7 +67,7 @@ class Devices:
             id = int(devicenumber)
             # logger.info(f"get_device: {device_data}")
         except ValueError as err:
-            raise falcon.HTTPInvalidParam('Invalid device ID, must be numeric.', device_id)
+            raise falcon.HTTPInvalidParam('Invalid device ID, must be numeric.', devicenumber)
         # loop = asyncio.get_running_loop()
         # device_data = {"message": f"The device number is {id}."} 
         device_data = database.get_device_measurement(id)
