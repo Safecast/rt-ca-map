@@ -3,6 +3,7 @@
 
 SU=louis  # Superuser established as installation time.
 BIN=/usr/local/bin
+WORKDIR=`pwd`
 
 $BIN/createdb --username=$SU --echo --owner=mapsuser mapsdb  "Realtime Maps Database"
 
@@ -10,5 +11,8 @@ $BIN/createdb --username=$SU --echo --owner=mapsuser mapsdb  "Realtime Maps Data
 $BIN/psql --list
 
 # Create the tables in the database 
-$BIN/psql --echo-queries --file="postgresql-schema.sql" mapsdb $SU 
+$BIN/psql --echo-queries --file="postgresql-schema.sql" mapsdb $SU
+
+# Initialize data in the tables based on list from constants.py
+$BIN/python3 ../maps_application/bootstrap.py
 

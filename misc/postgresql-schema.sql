@@ -57,6 +57,7 @@ ALTER TABLE transports OWNER TO mapsuser;
 CREATE TABLE IF NOT EXISTS devices (
     id SERIAL,  -- auto generate from sequence
     urn TEXT NOT NULL UNIQUE,  -- if not unique, Safecast nomenclature problem
+    last_seen TIMESTAMP WITH TIME ZONE NOT NULL,
     device_class INT REFERENCES device_classes(id),
     service_transport INT REFERENCES transports(id),
     display boolean DEFAULT TRUE,  -- If True, display on map
