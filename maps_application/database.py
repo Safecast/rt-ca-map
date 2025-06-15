@@ -15,7 +15,125 @@ import asyncio
 # Local
 from constants import DB_HOST, DB_NAME, DB_USER, DB_PASS
 
-# Prepared SQL statements
+class Database:
+    def __init__(self) -> None:
+        connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
+        self._conn = psycopg.connect(connstring, row_factory=dict_row)
+
+    def get_managed_devices(self):
+        '''Return list of device dicts, each dict:
+            'device_urn',
+            'device_class',
+            'last_seen',
+            'active',
+            'display'
+        '''
+        curs = self._conn.cursor()
+        curs.execute("""
+            SELECT devices.urn as device_urn, devices.id as "device_id",
+                device_classes.class as device_class, devices.last_seen as last_seen,
+                devices.active, devices.display
+            FROM devices, device_classes
+            WHERE
+                devices.device_class = device_classes.id
+            ORDER BY devices.urn ASC;
+            """)
+        return curs.fetchall()
+
+    def get_device_measurement_history(self, urn: str, days: int = 1) -> list:
+        '''Return a list of dict of historical readings for a single device,
+        with each entry in the list as a dict, for example
+                when_captured: timestamp with time zone
+                lnd_7318u: integer as a float
+        '''
+        curs = self._conn.cursor()
+        curs.execute("""
+            SELECT devices.urn as device_urn, 
+                    to_char(measurements.when_captured, 'YYYY-MM-DD" "HH24:MI:SSOF') as when_captured,
+                    measurements.lnd_7318u as lnd_7318u
+                FROM devices, measurements
+                WHERE devices.id = measurements.device
+                    AND devices.urn = %(device_urn)s
+                ORDER BY measurements.when_captured DESC
+            """,
+            {"device_urn": urn})
+        data = []
+        for row in curs.fetchall():
+            data.append(row)
+        # The timestampTZ format is compatible with expected return value
+        # See experiment in Thonny
+        return data
+
+    def get_device_measurement(self, urn: str):
+        '''Return a dict for a single device, for example
+            device_urn: str ex. geigiecast-zen:65004
+            device_class: str e.x. geigiecast
+            last_seen: timestampTZ formatted as "2025-06-01 22:02:48+00"
+            latitude: real as a float ex. 44.10849
+            longitude: real as a float ex. -78.75195
+            last_reading: integer as a float ex. 29 (from "lnd_7318u")
+        '''
+        curs = self._conn.cursor()
+        curs.execute("""
+            SELECT devices.urn as device_urn, device_classes.class as device_class,
+                    to_char(measurements.when_captured, 'YYYY-MM-DD" "HH24:MI:SSOF') as last_seen,
+                    measurements.loc_lat as latitude, measurements.loc_lon as longitude,
+                    measurements.lnd_7318u as last_reading
+                FROM devices, measurements, device_classes
+                WHERE devices.id = measurements.device
+                    AND device_classes.id = devices.device_class
+                    AND devices.urn = %(urn)s
+                ORDER BY measurements.when_captured DESC
+                LIMIT 1;
+            """,
+            {"urn": urn})
+        data = curs.fetchone()
+        # TODO: check the timestampTZ format to be compatible with expected return value
+        # See experiment in Thonny
+        return data
+
+    def get_device_list(self):
+        curs = self._conn.cursor()
+        curs.execute("""
+            SELECT id FROM devices
+                WHERE display = TRUE AND active = TRUE;
+            """)
+        dev_list = []
+        for dev in curs.fetchall():
+            dev_list.append(int(dev["device"]))
+        return dev_list
+
+    def activate_device(self, device_urn: str, activate: bool = True) -> int:
+        curs = self._conn.cursor()
+        curs.execute("""
+            UPDATE devices
+                SET active = %(status)s
+                WHERE devices.urn = %(device_urn)s 
+            """,
+            {"status": str(activate).upper(), "device_urn": device_urn})
+        return curs.rowcount
+
+# Note: this is a static function because it is called from fetcher, not the app.
+def get_active_devices():
+    '''Return a list of device URN e.g. "geigiecast:62106".
+    This is a static function, not part of class Database because it is called
+    by the fetcher.
+    '''
+    connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
+    with psycopg.connect(connstring, row_factory=dict_row) as conn:
+        curs = conn.cursor()
+        curs.execute("""
+            SELECT urn FROM devices
+                WHERE active = TRUE
+                ORDER BY urn ASC;
+            """)
+        data = []
+        for row in curs.fetchall():
+            data.append(row["urn"])
+        return data
+
+
+# Prepared SQL statements for function db_save_current_values()
 SQL_SELECT_DEVICE_CLASS = """
     SELECT COUNT(*) FROM device_classes
         WHERE class = %(class)s;
@@ -39,152 +157,39 @@ SQL_UPDATE_TRANSPORTS = """
         WHERE service_transport = %(service_transport)s;
     """
 SQL_SELECT_DEVICE_COUNT = """
-    SELECT COUNT(*) FROM devices
-        WHERE device = %(device)s;
-    """
-SQL_SELECT_DEVICES_IDS = """
-    SELECT device FROM devices
-        WHERE display = TRUE AND active = TRUE;
-    """
-SQL_SELECT_ACTIVE_DEVICES_URNS = """
-    SELECT urn FROM devices
-        WHERE active = TRUE
-        ORDER BY urn ASC;
-    """
-SQL_SELECT_MANAGED_DEVICES = """
-    SELECT devices.urn as device_urn, devices.device as "device_id",
-		device_classes.class as device_class, devices.last_seen as last_seen,
-        devices.active
-    FROM devices, device_classes
-    WHERE
-		devices.device_class = device_classes.id
-	ORDER BY devices.device ASC;
+    SELECT COUNT(urn) FROM devices
+        WHERE urn = %(urn)s;
     """
 SQL_INSERT_DEVICES = """
-    INSERT INTO devices (device, urn, device_class, service_transport, last_seen)
-        VALUES (%(device)s, %(urn)s,
+    INSERT INTO devices (urn, device_class, service_transport, last_seen)
+        VALUES (%(urn)s,
             (SELECT id FROM device_classes WHERE class = %(device_class)s),
             (SELECT id FROM transports WHERE service_transport = %(service_transport)s),
             %(last_seen)s
         );
     """
+SQL_UPDATE_DEVICES = """
+    UPDATE devices
+    SET
+        device_class = (SELECT id FROM device_classes WHERE class = %(device_class)s),
+        service_transport = (SELECT id FROM transports WHERE service_transport = %(service_transport)s),
+        last_seen = %(last_seen)s
+    WHERE urn = %(urn)s;
+    """
 SQL_INSERT_MEASUREMENT = """
     INSERT INTO measurements (device, when_captured, loc_lat, loc_lon, lnd_7318u)
-        VALUES (%(device)s, %(when_captured)s, %(loc_lat)s, %(loc_lon)s, %(lnd_7318u)s);
+        VALUES (
+            (select id from devices where devices.urn=%(urn)s), 
+            %(when_captured)s, %(loc_lat)s, %(loc_lon)s, %(lnd_7318u)s);
     """
 
-SQL_SELECT_DEVICE_MEASUREMENT = """
-    SELECT devices.urn as device_urn, devices.device as device_id, device_classes.class as device_class,
-            to_char(measurements.when_captured, 'YYYY-MM-DD" "HH24:MI:SSOF') as last_seen,
-            measurements.loc_lat as latitude, measurements.loc_lon as longitude,
-            measurements.lnd_7318u as last_reading
-        FROM devices, measurements, device_classes
-        WHERE devices.device = measurements.device
-            AND device_classes.id = devices.device_class
-            AND measurements.device = %(device)s
-        ORDER BY measurements.when_captured DESC
-        LIMIT 1;
-    """
-
-SQL_SELECT_DEVICE_MEASUREMENT_HISTORY = """
-    SELECT devices.urn as device_urn, 
-            to_char(measurements.when_captured, 'YYYY-MM-DD" "HH24:MI:SSOF') as when_captured,
-            measurements.lnd_7318u as lnd_7318u
-        FROM devices, measurements
-        WHERE devices.device = measurements.device
-            AND devices.urn = %(device_urn)s
-        ORDER BY measurements.when_captured DESC
-    """
-
-SQL_ACTIVATE_DEVICE = """
-    UPDATE devices
-        SET active = %(status)s
-        WHERE devices.urn = %(device_urn)s 
-    """
-
-def get_managed_devices():
-    '''Return list of device dicts, each dict:
-        'device_urn',
-        'device_id',
-        'device_class',
-        'last_seen',
-        'active'
-    '''
-    connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
-    with psycopg.connect(connstring, row_factory=dict_row) as conn:
-        curs = conn.cursor()
-        curs.execute(SQL_SELECT_MANAGED_DEVICES)
-        return curs.fetchall()
-
-def get_active_devices():
-    '''Return a list of device URN e.g. "geigiecast:62016".
-    '''
-    connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
-    with psycopg.connect(connstring, row_factory=dict_row) as conn:
-        curs = conn.cursor()
-        curs.execute(SQL_SELECT_ACTIVE_DEVICES_URNS)
-        data = []
-        for row in curs.fetchall():
-            data.append(row["urn"])
-    return data
-
-def get_device_measurement_history(urn: str, days: int = 1) -> list:
-    '''Return a list of dict of historical readings for a single device,
-       with each entry in the list as a dict, for example
-            when_captured: timestamp with time zone
-            lnd_7318u: integer as a float
-    '''
-    connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
-    with psycopg.connect(connstring, row_factory=dict_row) as conn:
-        curs = conn.cursor()
-        curs.execute(SQL_SELECT_DEVICE_MEASUREMENT_HISTORY, {"device_urn": urn})
-        data = []
-        for row in curs.fetchall():
-            data.append(row)
-        # The timestampTZ format is compatible with expected return value
-        # See experiment in Thonny
-    return data
-
-def get_device_measurement(id: int):
-    '''Return a dict for a single device, for example
-        device_urn: str ex. geigiecast-zen:65004
-        device_id: int ex. 65004
-        device_class: str e.x. geigiecast
-        last_seen: timestampTZ ex. "2025-06-01T22:02:48Z"
-        latitude: real as a float ex. 44.10849
-        longitude: real as a float ex. 7524
-        last_reading: integer as a float ex. 29 (from "lnd_7318u")
-    '''
-    # Connect to an existing database
-    connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
-    with psycopg.connect(connstring, row_factory=dict_row) as conn:
-        curs = conn.cursor()
-        curs.execute(SQL_SELECT_DEVICE_MEASUREMENT, {"device": id})
-        data = curs.fetchone()
-        # TODO: check the timestampTZ format to be compatible with expected return value
-        # See experiment in Thonny
-        return data
-
-def get_device_list():
-    connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
-    with psycopg.connect(connstring, row_factory=dict_row) as conn:
-        curs = conn.cursor()
-        curs.execute(SQL_SELECT_DEVICES_IDS)
-        dev_list = []
-        for dev in curs.fetchall():
-            dev_list.append(int(dev["device"]))
-        return dev_list
-
-def activate_device(device_urn: str, activate: bool = True) -> int:
-    connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
-    with psycopg.connect(connstring) as conn:
-        curs = conn.cursor()
-        curs.execute(SQL_ACTIVATE_DEVICE, {"status": str(activate).upper(), "device_urn": device_urn})
-        return curs.rowcount
-
+# Note: this is a static function because it is called from fetcher, not the app.
 async def db_save_current_values(safecast_data: dict) -> None:
     '''Take the entire dict returned from a device query to the TT database server
-    and update the database classes, transports, devices and measurements.'''
+    and update the database classes, transports, devices and measurements.
+    This is a static function, not part of class Database because it is called
+    by the fetcher.
+    '''
     # Shorthand variables, each one is a dict from the JSON response.
     current_values:dict = safecast_data["current_values"]
     transport_ip_info:dict = safecast_data["transport_ip_info"]
@@ -192,7 +197,6 @@ async def db_save_current_values(safecast_data: dict) -> None:
     # Connect to an existing database
     connstring = f"host={DB_HOST} dbname={DB_NAME} user={DB_USER} password={DB_PASS}"
     with psycopg.connect(connstring) as conn:
-    # with psycopg.connect(**DB_CONNECT) as conn:
         curs = conn.cursor()
 
         # Check if device_class is known
@@ -216,11 +220,20 @@ async def db_save_current_values(safecast_data: dict) -> None:
                           "transport_ip_info":json.dumps(transport_ip_info)})
 
         # Check if the device is known
-        curs.execute(SQL_SELECT_DEVICE_COUNT, {"device": current_values["device"]})
+        curs.execute(SQL_SELECT_DEVICE_COUNT, {"urn": current_values["device_urn"]})
         if curs.fetchone()[0] == 0:
             # Not already there, insert new
             curs.execute(SQL_INSERT_DEVICES, 
-                         {"device": current_values["device"],
+                         {  # no longer used "device": current_values["device"],
+                          "urn": current_values["device_urn"],
+                          "device_class": current_values["device_class"],
+                          "service_transport": current_values["service_transport"],
+                          "last_seen":current_values["when_captured"],
+                        })
+        else:
+            # Update the information
+            curs.execute(SQL_UPDATE_DEVICES, 
+                         {
                           "urn": current_values["device_urn"],
                           "device_class": current_values["device_class"],
                           "service_transport": current_values["service_transport"],
@@ -231,7 +244,7 @@ async def db_save_current_values(safecast_data: dict) -> None:
         try:
             curs.execute(SQL_INSERT_MEASUREMENT,
                      {
-                         "device": current_values["device"],
+                         "urn": current_values["device_urn"],
                          "when_captured": current_values["when_captured"],
                          "loc_lat": current_values["loc_lat"],
                          "loc_lon": current_values["loc_lon"],
@@ -242,7 +255,6 @@ async def db_save_current_values(safecast_data: dict) -> None:
             print(f"Error saving new measurement:\n  {err}")
             conn.rollback()  # Roll back the entire transaction
             return
-
     return
 
 if __name__ == '__main__':

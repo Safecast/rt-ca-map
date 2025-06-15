@@ -38,28 +38,15 @@ class Map:
         resp.content_type = falcon.MEDIA_HTML
         template = templates_env.get_template("index.html")
         resptext = template.render({"request": req})
-        logger.info(f"Map.on_get: template = {resptext}.")
+        logger.info(f"Map.on_get: returning template index.html.")
         resp.text = resptext
 
-# # Moved to module devices
-# class Devices:
-    # '''Respond to API requests.'''
-    # def __init__(self) -> None:
-    #     pass
-    # async def on_get(self, req, resp):
-    #     '''Return the list of devices with their latest readings.'''
-    #     logger.info(f"API.on_get: Entry, req = {req}, uri = {req.uri}")
-    #     logger.info(f"API.on_get: Calling get_devices_list.")
-    #     text = devices.Devices().get_devices_list()
-    #     # text = {"message": "Hello API."}
-    #     logger.info(text)
-    #     resp.media = text
-    #     resp.status = falcon.HTTP_200
 
 class Measurements:
     '''Respond to request for measurements.'''
-    def __init__(self) -> None:
-        pass
+    def __init__(self, devices) -> None:
+        self._devices = devices  # Keep working with same instance of the class
+
     async def on_get(self, req, resp, device_urn):
         '''Return the list of measurements with their latest readings.'''
         logger.info(f"Measurements.on_get: Entry, req = {req}, uri = {req.uri}, device_urn {device_urn}")
@@ -73,9 +60,12 @@ class Measurements:
         logger.info(f"  scope = {req.scope}")
         logger.info(f"  params = {req.params}")
         assert req.scope["type"] == "http"
-        days = req.params["days"]
-        text = devices.Devices().get_device_history(device_urn, days)
-        logger.info(text)
+        try:
+            days = req.params["days"]
+        except KeyError:
+            days = 30  # Default for the last 30 days.
+        text = self._devices.get_device_history(device_urn, days)
+        # logger.info(text)
         resp.media = text
         resp.status = falcon.HTTP_200
 
@@ -84,7 +74,6 @@ class Admin:
     '''Respond to administrative requests.'''
     def __init__(self, devices) -> None:
         self._devices = devices  # Keep working with same instance of the class
-        pass
 
     async def on_get(self, req, resp):
         '''Display the admin page with existing settings.'''
@@ -144,9 +133,9 @@ def create_app(config=None):
     # config = config or Config()
     logger.info(f"create_app: Creating new falcon.asgi.App.")
 
-    measurements = Measurements()
-    maps = Map()
     devs = devices.Devices()
+    maps = Map()
+    measurements = Measurements(devs)
     admin = Admin(devs)
     app = falcon.asgi.App()
     # Map
@@ -165,7 +154,7 @@ def create_app(config=None):
     # Starting background fetcher task
     coroutine = fetcher.fetch_all_latest
     # create and schedule the periodic task (4 minutes)
-    task = asyncio.create_task(fetcher.periodic(240.0, coroutine))
+    task = asyncio.create_task(fetcher.periodic(60.0, coroutine))
 
     return app
 

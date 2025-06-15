@@ -4,32 +4,33 @@
 import falcon
 import asyncio
 import json
-import pathlib
+from pathlib import Path
 import logging
 import httpx
+from datetime import datetime, timedelta
 
 # Local
 import database
-import fetcher
+# import fetcher
 
 
 class Devices:
-    '''Manage devices and respond to API requests.'''
+    '''Manage devices and respond to API requests.
+    '''
     def __init__(self) -> None:
         # Set up logging
-        self.logpath = pathlib.Path.cwd() / pathlib.Path("logs")
+        self.logpath = Path.cwd() / Path("logs")
         self.logpath.mkdir(parents=True, exist_ok=True)
         logging.basicConfig(filename=self.logpath/"devices_app.log", level=logging.INFO)
         self.logger = logging.getLogger(__name__)
-        # Managed devices
-        self._devices_managed = database.get_managed_devices()
+        # Connection to the database
+        self._mapsdb = database.Database()
 
     async def on_get(self, req, resp):
         '''Return the list of devices with their latest readings.'''
-        self.logger.info(f"API.on_get: Entry, req = {req}, uri = {req.uri}")
-        self. logger.info(f"API.on_get: Calling get_devices_list.")
+        self.logger.info(f"Devices.on_get: Entry, req = {req}, uri = {req.uri}")
+        self. logger.info(f"Devices.on_get: Calling get_devices_list.")
         text = self.get_devices_list()
-        # text = {"message": "Hello API."}
         self.logger.info(text)
         resp.media = text
         resp.status = falcon.HTTP_200
@@ -52,7 +53,7 @@ class Devices:
         return database.activate_device(device_urn, active)
 
 
-    def get_device(self, devicenumber: str) -> dict:
+    def get_device(self, device_urn: str) -> dict:
         '''Return a dict for a single device, for example
             device_urn: str ex. geigiecast-zen:65004
             device_id: int ex. 65004
@@ -63,43 +64,34 @@ class Devices:
             last_reading: integer as a float ex. 29 (from "lnd_7318u")
             location: None  (temporarily)
         '''
-        try:
-            id = int(devicenumber)
-            # logger.info(f"get_device: {device_data}")
-        except ValueError as err:
-            raise falcon.HTTPInvalidParam('Invalid device ID, must be numeric.', devicenumber)
-        # loop = asyncio.get_running_loop()
-        # device_data = {"message": f"The device number is {id}."} 
-        device_data = database.get_device_measurement(id)
-        # loop.run_in_executor(None, database.get_device_measurement, id)
-        #         loop = asyncio.get_running_loop()
-        # image = await loop.run_in_executor(None, self._load_from_bytes, data)
-        # logger.info(f"get_device: {device_data}")
+        self.logger.info(f"Devices.get_device: getting info on {device_urn}.")
+        device_data = self._mapsdb.get_device_measurement(device_urn)
         if device_data:
-            # data_json = json.dumps(device_data, indent=2)
-            # yield data_json
             device_data["location"] = None
             return device_data
         else:
-            print("devices:get_device(): empty device data.")
+            self.logger.info(f"devices:get_device(): empty device data for {devicenumber}.")
             return {"message": "No device data."}
 
     def get_devices_list(self):
-        devices = database.get_device_list()
-        device_data = []
-        for dev in devices:
-            device_data.append(self.get_device(dev))
-        return {"devices": device_data}
+        '''Return {"devices": devlist}, 
+        where devlist is list of device URNs of 
+        active and displayable devices.'''
+        self.logger.info(f"Devices.get_devices_list: getting info.")
+        devlist = []
+        for dev in self._mapsdb.get_managed_devices():
+            self.logger.info(f"Devices.get_devices_list: getting device_urn: {dev['device_urn']}")
+            if dev["active"] and dev["display"]:
+                devlist.append(self._mapsdb.get_device_measurement(dev['device_urn']))
+        self.logger.info(f"Devices.get_devices_list: {devlist}")
+        return {"devices": devlist}
 
     def get_device_history(self, urn, days):
-        device_data = database.get_device_measurement_history(urn, days)
-        # device_data = []
-        # for dev in devices:
-        #     device_data.append(self.get_device(dev))
+        device_data = self._mapsdb.get_device_measurement_history(urn, days)
         return {"measurements": device_data}
 
     def get_devices_managed(self):
-        device_data = database.get_managed_devices()
+        device_data = self._mapsdb.get_managed_devices()
         active_devs = []
         inactive_devs = []
         for dev in device_data:
@@ -108,4 +100,3 @@ class Devices:
             else:
                 inactive_devs.append(dev)
         return active_devs, inactive_devs
-
