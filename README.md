@@ -12,46 +12,52 @@ A web application that visualizes radiation data from Safecast devices on an int
 
 ## Prerequisites
 
-- Python 3.8+
-- pip (Python package manager)
+- Python 3.8+  (Interpreted scripting language)
+- PostgreSQL 16.9+  (Object-relational database engine)
+- Supervisor (Python package to manage tasks)
 - Git (for version control)
 
 ## Installation
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/radiation-map.git
+   git clone https://github.com/Safecast/rt-ca-map.git
    cd radiation-map
    ```
-
-2. Create and activate a virtual environment (recommended):
+2. Initialize the database (as a PostgreSQL user e.g. role 'admin'):
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   misc/postgresql-initialize-mapsdb.sh
    ```
 
-3. Install the required packages:
+3. Create and activate a virtual environment (recommended):
+   ```sh
+   python -m venv venv
+   . venv/bin/activate  # On Linux with bash: source venv/bin/activate
+   ```
+
+4. Install the required packages:
    ```bash
+   python3 -m pip install pip --upgrade  # Get latest installation utility
    pip install -r requirements.txt
    ```
 
 ## Configuration
 
-Create a `.env` file in the project root with the following variables (if needed):
+Edit the file `constants.py` to add the PostgreSQL `mapsdb` connection parameters:
+   ```python
+   # PostgreSQL on Grendel
+   DB_HOST = 'localhost'
+   DB_PORT = '5432'
+   DB_NAME = 'mapsdb'
+   DB_USER = 'mapsuser'
+   DB_PASS = ''  # Add your secret password (may be blank if you ssh tunnel)
+   ```
 
-```env
-# Database configuration
-DATABASE_URL=duckdb:///radiation_data.db
+## Testing the Application
 
-# Safecast API settings
-SAFECAST_API_BASE=https://tt.safecast.org
-```
-
-## Running the Application
-
-1. Start the FastAPI development server:
+1. Start the ASGI server:
    ```bash
-   uvicorn main:app --reload
+   ./uvicorn_start.sh
    ```
 
 2. Open your web browser and navigate to:
@@ -59,27 +65,43 @@ SAFECAST_API_BASE=https://tt.safecast.org
    http://127.0.0.1:8000
    ```
 
+## Production
+   Launch the start script with Supervisor. The daemon takes care of restarting the application if it quits unexpectedly.
+
 ## Project Structure
 
 ```
-radiation-map/
-├── main.py              # Main FastAPI application
-├── requirements.txt     # Python dependencies
-├── radiation_data.db    # Local database (created on first run)
-├── safecast_data.db    # Cached Safecast data
+maps_application/
+├── maps/              # Main ASGI application module
+│   ├── app.py         # Main ASGI application
+│   ├── asgi.py        # Main ASGI wrapper
+│   ├── templates/     # Jinja2 HTML templates
+│       ├── admin.html # Form for /admin end points
+│       └── index.html # Map starting point
+├── admin.py           # Manage /admin end points
+├── database.py        # Interface to PostgreSQL database
+├── devices.py         # Manage the devices and /devices end point
+├── fetcher.py         # Utilities to fetch from Safecast database
+├── requirements.txt   # Python dependencies (install in venv)
+├── misc/              # Installation support
+│   ├── postgresql-initialize-mapsdb.sh  # Inintialize mapsdb database
+│   └── postgresql-schema.sql  # PostgreSQL database schema
 ├── static/             # Static files (CSS, JS, images)
 │   ├── css/
 │   └── js/
-└── templates/          # HTML templates
-    └── index.html
 ```
 
 ## API Endpoints
+   - `/map` GET the map and markers
+   - `/devices` GET the list of devices with latitude, longitude, when_captured and uSv/h
+   - `/measurements/{device_urn}` GET latest measurements since (time span TBD)
 
-- `GET /` - Main application interface
-- `GET /api/devices` - List all available devices
-- `GET /api/measurements?device_urn={urn}&days={days}` - Get measurements for a device
+- `GET /map` - Map and markers, main application interface
+- `GET /devices` - list of devices with latitude, longitude, when_captured and uSv/h
+- `GET /measurements/{device_urn}` - latest measurements since (time span TBD)
 - `POST /api/fetch-data` - Trigger data fetch from Safecast API
+- `GET /admin` - Admin interface form
+- `POST /admin` - With command=..., administer devices
 
 ## Data Sources
 
