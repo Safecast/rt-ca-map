@@ -202,7 +202,7 @@ async function createChartGraph(sensorId, containerId) {
             type: 'line',
             data: {
                 datasets: [{
-                    label: 'Radiation (cpm)',
+                    label: 'Radiation (uSv/h)',
                     data: chartData,
                     borderColor: 'rgba(54, 162, 235, 1)',
                     backgroundColor: 'rgba(54, 162, 235, 0.1)',
@@ -224,7 +224,8 @@ async function createChartGraph(sensorId, containerId) {
                         intersect: false,
                         callbacks: {
                             label: function(context) {
-                                return `${Math.round(context.raw.y)} cpm`;
+                                return `${context.raw.y.toFixed(3)} uSv/h`;
+                                // return `${Math.round(context.raw.y)} uSv/h`;
                             }
                         }
                     }
@@ -233,7 +234,7 @@ async function createChartGraph(sensorId, containerId) {
                     y: {
                         title: {
                             display: true,
-                            text: 'Radiation (cpm)',
+                            text: 'Radiation (uSv/h)',
                             position: 'left'
                         },
                         beginAtZero: true,

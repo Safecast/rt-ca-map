@@ -50,7 +50,7 @@ class Database:
         curs.execute("""
             SELECT devices.urn as device_urn, 
                     to_char(measurements.when_captured, 'YYYY-MM-DD" "HH24:MI:SSOF') as when_captured,
-                    measurements.lnd_7318u as lnd_7318u
+                    to_char(measurements.lnd_7318u / 334.0, '990D999') as lnd_7318u
                 FROM devices, measurements
                 WHERE devices.id = measurements.device
                     AND devices.urn = %(device_urn)s

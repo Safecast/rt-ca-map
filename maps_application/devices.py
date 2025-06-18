@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 # Local
 import database
-# import fetcher
+import fetcher
 
 
 class Devices:
@@ -37,7 +37,7 @@ class Devices:
 
     async def add_device(self, device_urn: str) -> bool:
         '''If device not already known in the database, wait for fetcher to do its job.'''
-        devices = database.get_managed_devices()
+        devices = self._mapsdb.get_managed_devices()
         for dev in devices:
             # If already there, return True
             if dev["device_urn"] == device_urn:
