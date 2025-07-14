@@ -11,6 +11,7 @@ import psycopg
 from psycopg.rows import dict_row
 import json
 import asyncio
+from datetime import datetime, timedelta, timezone
 
 # Local
 from constants import DB_HOST, DB_NAME, DB_USER, DB_PASS
@@ -40,27 +41,33 @@ class Database:
             """)
         return curs.fetchall()
 
-    def get_device_measurement_history(self, urn: str, days: int = 1) -> list:
+    def get_device_measurement_history(self, urn: str, hours: str = '24') -> list:
         '''Return a list of dict of historical readings for a single device,
         with each entry in the list as a dict, for example
                 when_captured: timestamp with time zone
                 lnd_7318u: integer as a float
         '''
+        # Determine the appropriate time scale, depending on the number of data points
+        nowtime = datetime.now(timezone.utc)
+        starttime = nowtime - timedelta(hours=int(hours))
+        backtrack = f"'{starttime.isoformat(sep=' ', timespec='minutes')}'"
         curs = self._conn.cursor()
         curs.execute("""
             SELECT devices.urn as device_urn, 
-                    to_char(measurements.when_captured, 'YYYY-MM-DD" "HH24:MI:SSOF') as when_captured,
+                    to_char(measurements.when_captured, 'YYYY-MM-DD" "HH24:MIOF') as when_captured,
                     to_char(measurements.lnd_7318u / 334.0, '990D999') as lnd_7318u
                 FROM devices, measurements
                 WHERE devices.id = measurements.device
                     AND devices.urn = %(device_urn)s
+                    AND when_captured >= %(backtrack)s
                 ORDER BY measurements.when_captured DESC
             """,
-            {"device_urn": urn})
+            {"device_urn": urn, "backtrack": backtrack})
         data = []
         for row in curs.fetchall():
             data.append(row)
-        # The timestampTZ format is compatible with expected return value
+        # assert len(data) > 30, f'Number of data points = {len(data)}, PG result = {curs.statusmessage}\n'
+# The timestampTZ format is compatible with expected return value
         # See experiment in Thonny
         return data
 

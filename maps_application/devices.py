@@ -86,8 +86,9 @@ class Devices:
         self.logger.info(f"Devices.get_devices_list: {devlist}")
         return {"devices": devlist}
 
-    def get_device_history(self, urn, days):
-        device_data = self._mapsdb.get_device_measurement_history(urn, days)
+    def get_device_history(self, urn, hours):
+        device_data = self._mapsdb.get_device_measurement_history(urn, hours)
+        self.logger.info(f"Devices.get_device_history: {json.dumps( device_data, indent=4)}")
         return {"measurements": device_data}
 
     def get_devices_managed(self):

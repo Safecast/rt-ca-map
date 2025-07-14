@@ -62,11 +62,11 @@ class Measurements:
         logger.info(f"  params = {req.params}")
         assert req.scope["type"] == "http"
         try:
-            days = req.params["days"]
+            hours = req.params["hours"]
         except KeyError:
-            days = 30  # Default for the last 30 days.
-        text = self._devices.get_device_history(device_urn, days)
-        # logger.info(text)
+            hours = 24  # Default for the last 24 hours.
+        text = self._devices.get_device_history(device_urn, hours)
+        # logger.info(json.dumps(text, indent=2))
         resp.media = text
         resp.status = falcon.HTTP_200
 
@@ -95,7 +95,7 @@ def create_app(config=None):
 
     # Starting background fetcher task
     coroutine = fetcher.fetch_all_latest
-    # create and schedule the periodic task (4 minutes)
+    # create and schedule the periodic task (1 minute)
     task = asyncio.create_task(fetcher.periodic(60.0, coroutine))
 
     return app

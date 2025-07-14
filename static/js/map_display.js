@@ -135,8 +135,7 @@ async function createChartGraph(sensorId, containerId) {
         `;
         
         console.log(`Fetching data for sensor ${sensorId}`);
-        // const response = await fetch(`/api/measurements/${sensorId}?days=30`);
-        const response = await fetch(`/measurements/${sensorId}?days=30`);
+        const response = await fetch(`/measurements/${sensorId}?hours=8`);
         const data = await response.json();
         console.log(`Received data for ${sensorId}:`, data);
         
@@ -197,7 +196,8 @@ async function createChartGraph(sensorId, containerId) {
         // Simplify to just use hour unit with good spacing
         let timeUnit = 'hour';
         
-        // Create a Chart.js chart that matches the screenshot style
+        // Create a Chart.js chart
+        // No interpolation or curve fitting
         popupCharts[containerId] = new Chart(ctx, {
             type: 'line',
             data: {
@@ -208,8 +208,8 @@ async function createChartGraph(sensorId, containerId) {
                     backgroundColor: 'rgba(54, 162, 235, 0.1)',
                     borderWidth: 2,
                     pointRadius: 0,
+                    stepped: true,
                     fill: true,
-                    tension: 0.2
                 }]
             },
             options: {
@@ -224,8 +224,7 @@ async function createChartGraph(sensorId, containerId) {
                         intersect: false,
                         callbacks: {
                             label: function(context) {
-                                return `${context.raw.y.toFixed(3)} uSv/h`;
-                                // return `${Math.round(context.raw.y)} uSv/h`;
+                                return `${context.raw.y} uSv/h`
                             }
                         }
                     }
