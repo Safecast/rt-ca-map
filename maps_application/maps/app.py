@@ -62,7 +62,7 @@ class Measurements:
         logger.info(f"  params = {req.params}")
         assert req.scope["type"] == "http"
         try:
-            hours = req.params["hours"]
+            hours = int(req.params["hours"])
         except KeyError:
             hours = 24  # Default for the last 24 hours.
         text = self._devices.get_device_history(device_urn, hours)

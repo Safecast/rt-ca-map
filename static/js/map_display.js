@@ -135,7 +135,7 @@ async function createChartGraph(sensorId, containerId) {
         `;
         
         console.log(`Fetching data for sensor ${sensorId}`);
-        const response = await fetch(`/measurements/${sensorId}?hours=8`);
+        const response = await fetch(`/measurements/${sensorId}?hours=24`);
         const data = await response.json();
         console.log(`Received data for ${sensorId}:`, data);
         

@@ -41,21 +41,25 @@ class Database:
             """)
         return curs.fetchall()
 
-    def get_device_measurement_history(self, urn: str, hours: str = '24') -> list:
+    def get_device_measurement_history(self, urn: str, hours: int = 24) -> list:
         '''Return a list of dict of historical readings for a single device,
         with each entry in the list as a dict, for example
                 when_captured: timestamp with time zone
                 lnd_7318u: integer as a float
+        Insert zero value samples for gaps in the record. Assume 5 minute intervals for now.
+        If there are no samples returned from the database query, the function
+        makes up the amount of zero samples to satisfy the hours parameter.
+
         '''
-        # Determine the appropriate time scale, depending on the number of data points
+        SAMPLING_INTERVAL = 5  # minutes
         nowtime = datetime.now(timezone.utc)
-        starttime = nowtime - timedelta(hours=int(hours))
+        starttime = nowtime - timedelta(hours=hours)
         backtrack = f"'{starttime.isoformat(sep=' ', timespec='minutes')}'"
         curs = self._conn.cursor()
         curs.execute("""
             SELECT devices.urn as device_urn, 
                     to_char(measurements.when_captured, 'YYYY-MM-DD" "HH24:MIOF') as when_captured,
-                    to_char(measurements.lnd_7318u / 334.0, '990D999') as lnd_7318u
+                    to_char(measurements.lnd_7318u / 334.0, '0D999') as lnd_7318u
                 FROM devices, measurements
                 WHERE devices.id = measurements.device
                     AND devices.urn = %(device_urn)s
@@ -66,10 +70,53 @@ class Database:
         data = []
         for row in curs.fetchall():
             data.append(row)
-        # assert len(data) > 30, f'Number of data points = {len(data)}, PG result = {curs.statusmessage}\n'
-# The timestampTZ format is compatible with expected return value
+        # DEBUG assert len(data) > 30, f'Number of data points = {len(data)}, PG result = {curs.statusmessage}\n'
+
+        # The timestampTZ format is compatible with expected return value
         # See experiment in Thonny
-        return data
+
+        samples = []  # Output list
+
+        # If there are no samples returned from the query,
+        # make up the amount of zero samples to satisfy the hours parameter.
+        if len(data) == 0:
+            timenow = datetime.now(timezone.utc)
+            missing = 1
+            for i in range(hours * (60//SAMPLING_INTERVAL)):
+                    inserttime = timenow - timedelta(seconds=missing*5*60)
+                    newitem = {'device_urn': urn,
+                            'when_captured': inserttime.isoformat(sep=' ', timespec='minutes'),
+                            'lnd_7318u': '0.000'}
+                    samples.append(newitem)
+                    missing += 1
+            return samples
+
+        # Insert zero value samples for gaps in the record. Assume 5 minute intervals for now.
+        newtime = datetime.fromisoformat(data[0]["when_captured"]) - timedelta(minutes=5)
+        # print(f"new time = {newtime}")
+        idx = 0
+        while idx < len(data) - 1:
+            item = data[idx]
+            when_captured = datetime.fromisoformat(item["when_captured"])
+            nexttime = datetime.fromisoformat(data[idx+1]["when_captured"])
+            interval = (when_captured - nexttime).seconds
+            if interval <= (SAMPLING_INTERVAL +0.5) * 60:  # Typically 5 minutes+0.5 minute
+                samples.append(item)
+            else:
+                # DEBUG print(when_captured, interval)
+                samples.append(item)
+                missing = 1
+                while interval > (SAMPLING_INTERVAL + 0.5) * 60:
+                    inserttime = when_captured - timedelta(seconds=missing*SAMPLING_INTERVAL*60)
+                    newitem = {'device_urn': urn,
+                            'when_captured': inserttime.isoformat(sep=' ', timespec='minutes'),
+                            'lnd_7318u': '0.000'}
+                    samples.append(newitem)
+                    interval -= SAMPLING_INTERVAL*60
+                    missing += 1
+            idx += 1
+        return samples
+
 
     def get_device_measurement(self, urn: str):
         '''Return a dict for a single device, for example
